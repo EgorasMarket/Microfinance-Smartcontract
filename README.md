@@ -5,10 +5,7 @@ Smart contracts comprising the business logic of Egoras microfinance protocol
 ## This project uses:
 - [Truffle v5](https://truffleframework.com/)
 - [Ganache](https://truffleframework.com/ganache)
-- [Solium](https://github.com/duaraghav8/Solium)
 - [OpenZeppelin](https://github.com/OpenZeppelin/openzeppelin-solidity)
-- [Travis CI](https://travis-ci.org/InstaDApp/InstaContract-v2) and [Circle CI](https://circleci.com/gh/InstaDApp/InstaContract-v2)
-- [Coveralls](https://coveralls.io/github/InstaDApp/InstaContract-v2?branch=master)
 
 ## Installation
 
