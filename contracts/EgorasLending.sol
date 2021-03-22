@@ -374,7 +374,7 @@ function approveLoan(uint _loanID) external override{
            require(_votePower > 0, "Power must be greater than zero!");   
             IERC20 iERC20 = IERC20(egorasEGR);
             require(iERC20.allowance(msg.sender, address(this)) >= _votePower, "Insufficient EGR allowance for vote!");
-             iERC20.transferFrom(msg.sender, address(this), _votePower);
+            require( iERC20.transferFrom(msg.sender, address(this), _votePower), "Error");
              Company storage comp = company[_company];
               if(_accept){
                 comp.positiveVote = comp.positiveVote.add(_votePower);
