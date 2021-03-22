@@ -80,6 +80,8 @@ contract EgorasLending is EgorasLendingInterface {
     uint public treasuryCut;
     constructor(address _egorasEusd, address _egorasEgr, uint _initialLoanFee, uint _totalIncentive, uint _weeklyIncentive, uint _initialRequestPower
     , uint _treasuryCut)  public {
+        require(address(0) != _egorasEusd, "Invalid address");
+        require(address(0) != _egorasEgr, "Invalid address");
         egorasEGR = _egorasEgr;
         egorasEUSD = _egorasEusd;
         loanFee = _initialLoanFee;
@@ -98,7 +100,7 @@ function createRequest(uint _requestType, uint _changeTo, string memory _reason,
     require(!activeRequest[_requestType], "Another request is still active");
     IERC20 iERC20 = IERC20(egorasEGR);
     require(iERC20.allowance(msg.sender, address(this)) >= requestCreationPower, "Insufficient EGR allowance for vote!");
-    iERC20.transferFrom(msg.sender, address(this), requestCreationPower);
+    require(iERC20.transferFrom(msg.sender, address(this), requestCreationPower), "Error!");
     Requests memory _request = Requests({
       creator: msg.sender,
       requestType: _requestType,
@@ -136,7 +138,7 @@ function governanceVote(uint _requestType, uint _requestID, uint _votePower, boo
     require(_requestType == 0 || _requestType == 1 || _requestType == 2,  "Invalid request type!");
     IERC20 iERC20 = IERC20(egorasEGR);
     require(iERC20.allowance(msg.sender, address(this)) >= _votePower, "Insufficient EGR allowance for vote!");
-    iERC20.transferFrom(msg.sender, address(this), _votePower);
+    require(iERC20.transferFrom(msg.sender, address(this), _votePower), "Error");
     requestPower[_requestType][msg.sender] = requestPower[_requestType][msg.sender].add(_votePower);
      
      
@@ -147,10 +149,8 @@ function governanceVote(uint _requestType, uint _requestID, uint _votePower, boo
         }
       
            
-            if(manageRequestVoters[_requestID][msg.sender] == false){
-                manageRequestVoters[_requestID][msg.sender] = true;
-                activeRequestVoters[_requestID].push(Votters(msg.sender));
-            }
+            manageRequestVoters[_requestID][msg.sender] = true;
+            activeRequestVoters[_requestID].push(Votters(msg.sender));
        
            updateVotingStats(_votePower, msg.sender);
     
@@ -214,7 +214,7 @@ function validateRequest(uint _requestID) public override{
         string memory _title,
         uint _length,
         string memory _image_url
-        ) public override {
+        ) external override {
             require(_amount > 0, "Loan amount should be greater than zero");
             require(_length > 0, "Loan duration should be greater than zero");
             require(bytes(_title).length > 3, "Loan title should more than three characters long");
@@ -263,7 +263,7 @@ function vote(uint _loanID, uint _votePower, bool _accept) external override{
             require(_votePower > 0, "Power must be greater than zero!");
             IERC20 iERC20 = IERC20(egorasEGR);
             require(iERC20.allowance(msg.sender, address(this)) >= _votePower, "Insufficient EGR allowance for vote!");
-            iERC20.transferFrom(msg.sender, address(this), _votePower);
+            require(iERC20.transferFrom(msg.sender, address(this), _votePower), "Error!");
             if(_accept){
                 positiveVote[_loanID] = positiveVote[_loanID].add(_votePower);
             }else{
@@ -273,12 +273,10 @@ function vote(uint _loanID, uint _votePower, bool _accept) external override{
              
              votePower[_loanID][msg.sender] = votePower[_loanID][msg.sender].add(_votePower);
            
+            hasVoted[_loanID][msg.sender] = true;
+            listOfvoters[_loanID].push(Votters(msg.sender));
            
-            if(hasVoted[_loanID][msg.sender] == false){
-                hasVoted[_loanID][msg.sender] = true;
-                listOfvoters[_loanID].push(Votters(msg.sender));
-            }
-          updateVotingStats(_votePower, msg.sender);
+            updateVotingStats(_votePower, msg.sender);
      
             
             emit Voted(msg.sender, _loanID,  positiveVote[_loanID],negativeVote[_loanID], _accept);
@@ -304,25 +302,37 @@ function repayLoan(uint _loanID) external override{
 function approveLoan(uint _loanID) external override{
      require(isDue(_loanID), "Voting is not over yet!");
      require(!stale[_loanID], "The loan is either approve/declined");
-     bool state = false;
+    
      Loan storage loan = loans[_loanID];
      IERC20 eusd = IERC20(egorasEUSD);
      IERC20 egr = IERC20(egorasEGR);
      if(positiveVote[_loanID] > negativeVote[_loanID]){
      require(eusd.mint(loan.creator, loan.amount), "Fail to transfer fund");
-     loan.isApproved = true;
-     state = true;
-     }
     
+     
+      
     for (uint256 i = 0; i < listOfvoters[_loanID].length; i++) {
            address voterAddress = listOfvoters[_loanID][i].voter;
            uint amount = votePower[_loanID][voterAddress];
            require(egr.transfer(voterAddress, amount), "Fail to refund voter");
            emit Refunded(amount, voterAddress, _loanID, now);
     }
+     loan.isApproved = true;
+     stale[_loanID] = true;
+     emit ApproveLoan(_loanID, true, msg.sender, now);
+     }else{
+        for (uint256 i = 0; i < listOfvoters[_loanID].length; i++) {
+           address voterAddress = listOfvoters[_loanID][i].voter;
+           uint amount = votePower[_loanID][voterAddress];
+           require(egr.transfer(voterAddress, amount), "Fail to refund voter");
+           emit Refunded(amount, voterAddress, _loanID, now);
+    } 
+     stale[_loanID] = true;
+     emit ApproveLoan(_loanID, false, msg.sender, now);
+     }
+   
     
-    stale[_loanID] = true;
-    ApproveLoan(_loanID, state, msg.sender, now);
+   
 }
 
 
@@ -374,7 +384,7 @@ function approveLoan(uint _loanID) external override{
            require(_votePower > 0, "Power must be greater than zero!");   
             IERC20 iERC20 = IERC20(egorasEGR);
             require(iERC20.allowance(msg.sender, address(this)) >= _votePower, "Insufficient EGR allowance for vote!");
-            require( iERC20.transferFrom(msg.sender, address(this), _votePower), "Error");
+             iERC20.transferFrom(msg.sender, address(this), _votePower);
              Company storage comp = company[_company];
               if(_accept){
                 comp.positiveVote = comp.positiveVote.add(_votePower);
@@ -383,10 +393,8 @@ function approveLoan(uint _loanID) external override{
             }
             
                VoteInCompanyPower[_company][msg.sender] = VoteInCompanyPower[_company][msg.sender].add(_votePower);
-               if(manageLoanCompanyVoters[_company][msg.sender] == false){
-                manageLoanCompanyVoters[_company][msg.sender] = true;
+              manageLoanCompanyVoters[_company][msg.sender] = true;
                 activeLoanCompanyVoters[_company].push(Votters(msg.sender));
-            }
             
            updateVotingStats(_votePower, msg.sender);
            
@@ -403,13 +411,9 @@ function approveLoan(uint _loanID) external override{
       userCurrentVotePower[_voter][currentVotingPeriod] = userCurrentVotePower[_voter][currentVotingPeriod].add(_power);
       currentTotalVotePower2[currentEtherVotingPeriod] = currentTotalVotePower2[currentEtherVotingPeriod].add(_power);
       userCurrentVotePower2[_voter][currentEtherVotingPeriod] = userCurrentVotePower2[_voter][currentEtherVotingPeriod].add(_power);
-             if(isCurrentEtherVotter[_voter][currentEtherVotingPeriod] == false){
-                etherActiveVotters[currentEtherVotingPeriod].push(Votters(_voter));
-            }
+          etherActiveVotters[currentEtherVotingPeriod].push(Votters(_voter));
+         activeVoters[currentVotingPeriod].push(Votters(_voter));
        
-        if(isCurrentVotter[_voter][currentVotingPeriod] == false){
-                activeVoters[currentVotingPeriod].push(Votters(_voter));
-            }
             
          totalVotePower[_voter] = totalVotePower[_voter].add(_power);
           
@@ -479,7 +483,7 @@ function distributeFee() external override{
 function depositEther() public payable {
 }
 
-function systemInfo() public view  returns(uint _requestpower, uint _loanFee, uint _totalIncentive, uint _weeklyIncentive ,  uint _treasuryCut, uint _nextClaimDate){
+function systemInfo() external view  returns(uint _requestpower, uint _loanFee, uint _totalIncentive, uint _weeklyIncentive ,  uint _treasuryCut, uint _nextClaimDate){
     return(requestCreationPower, loanFee, totalIncentive, weeklyIncentive, treasuryCut, nextClaimDate);
 }
 
