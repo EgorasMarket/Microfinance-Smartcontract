@@ -2,7 +2,7 @@
 pragma solidity >=0.4.0 <0.7.0;
 import "./SafeMath.sol";
 import "./EgorasLendingInterface.sol";
-
+import './SafeDecimalMath.sol';
 
 interface IERC20 {
     function totalSupply() external view  returns (uint256);
@@ -16,6 +16,7 @@ interface IERC20 {
 }
 
 contract EgorasLending is EgorasLendingInterface {
+    using SafeDecimalMath for uint;
     mapping(uint => bool) activeRequest;
     mapping(uint => mapping(address => uint)) requestPower;
     mapping(address => mapping(address => uint)) VoteInCompanyPower;
@@ -224,7 +225,9 @@ function validateRequest(uint _requestID) public override{
             string memory name_of_loan_company = company[msg.sender].companyName;
             uint getTotalWeeks = _length.div(6);
             uint amount = _amount.div(getTotalWeeks);
-            uint fee = uint(int256(amount) / int256(10000) * int256(loanFee));
+            uint fee = uint(uint(amount).divideDecimalRound(uint(10000)).multiplyDecimalRound(uint(loanFee)));
+            
+       
             uint  weekly_payment = fee.add(amount);
          Loan memory _loan = Loan({
          amount: _amount,
@@ -288,7 +291,9 @@ function repayLoan(uint _loanID) external override{
    require(loan.creator == msg.sender, "Unauthorized.");
    IERC20 iERC20 = IERC20(egorasEUSD);
    require(loan.totalWeeks > loan.numWeekspaid, "The loan fully paid!");
-   uint fee = uint(int256(loan.min_weekly_returns) / int256(10000) * int256(loan.loanFee));
+   
+   
+     uint fee = uint(uint(loan.min_weekly_returns).divideDecimalRound(uint(10000)).multiplyDecimalRound(uint(loan.loanFee)));
    require(iERC20.allowance(msg.sender, address(this)) >= loan.min_weekly_returns, "Insufficient EUSD allowance for repayment!");
    require(iERC20.transferFrom(msg.sender, address(this), fee), "Fail to transfer");
    iERC20.burnFrom(msg.sender, loan.min_weekly_returns.sub(fee));
